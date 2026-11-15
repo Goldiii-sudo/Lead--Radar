@@ -35,7 +35,7 @@ INTENT = re.compile(
 
 # Reject self-promotion by freelancers looking for work
 NOISE = re.compile(
-    r"(\[for hire\]|\bfor hire\b|\bavailable for (work|hire|projects|freelance)\b|\bopen to work\b|"
+    r"(\[for hire\]|\[for-hire\]|\[offer\]|\bfor hire\b|\bavailable for (work|hire|projects|freelance)\b|\bopen to work\b|"
     r"\bi am a (freelance|freelancer|developer|designer|copywriter|writer|editor|marketer|virtual assistant)|"
     r"\bi'?m a (freelance|freelancer|developer|designer|copywriter|writer|editor|marketer|virtual assistant)|"
     r"\bdm me for (your|any|web|design|coding|copywriting)|"
@@ -307,9 +307,44 @@ async def _call_groq(prompt: str, json_mode: bool = False) -> str | None:
     return None
 
 
+async def _call_nvidia(prompt: str, json_mode: bool = False) -> str | None:
+    raw = os.getenv("NVIDIA_API_KEYS", "").strip() or os.getenv("NVIDIA_API_KEY", "").strip()
+    if not raw:
+        return None
+    keys = [k.strip() for k in raw.split(",") if k.strip()]
+    model = os.getenv("NVIDIA_MODEL", "meta/llama-3.1-8b-instruct").strip()
+    body = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.25 if json_mode else 0.4,
+        "max_tokens": 500,
+    }
+    if json_mode:
+        body["response_format"] = {"type": "json_object"}
+    for key in keys:
+        try:
+            r = await http().post(
+                "https://integrate.api.nvidia.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json=body,
+                timeout=20,
+            )
+            if r.status_code == 200:
+                txt = r.json()["choices"][0]["message"]["content"].strip()
+                if txt:
+                    return txt
+        except Exception:
+            continue
+    return None
+
+
 async def llm(prompt: str, json_mode: bool = False) -> str | None:
-    """Call Groq or Gemini with multi-model fallback and concurrency control."""
+    """Call NVIDIA NIM, Groq, or Gemini with multi-model fallback and concurrency control."""
     async with SEM:
+        if os.getenv("NVIDIA_API_KEYS", "").strip() or os.getenv("NVIDIA_API_KEY", "").strip():
+            out = await _call_nvidia(prompt, json_mode)
+            if out:
+                return out
         if os.getenv("GROQ_API_KEY", "").strip():
             out = await _call_groq(prompt, json_mode)
             if out:
@@ -322,15 +357,17 @@ async def llm(prompt: str, json_mode: bool = False) -> str | None:
 
 
 def active_llm_provider() -> str:
+    has_nvidia = bool(os.getenv("NVIDIA_API_KEYS", "").strip() or os.getenv("NVIDIA_API_KEY", "").strip())
     has_gemini = bool(os.getenv("GEMINI_API_KEY", "").strip())
     has_groq = bool(os.getenv("GROQ_API_KEY", "").strip())
-    if has_gemini and has_groq:
-        return "Groq + Gemini"
+    parts = []
+    if has_nvidia:
+        parts.append("NVIDIA NIM")
     if has_groq:
-        return "Groq AI"
+        parts.append("Groq")
     if has_gemini:
-        return "Gemini AI"
-    return ""
+        parts.append("Gemini")
+    return " + ".join(parts)
 
 
 async def classify(text: str, kws: list[str], author: str = "") -> dict:

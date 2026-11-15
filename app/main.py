@@ -195,8 +195,19 @@ async def health():
 
 
 @app.get("/api/leads")
-async def leads(status: str = "", source: str = "", min_score: int = 0, q: str = "", has_contact: str = "", limit: int = 100):
+async def leads(
+    status: str = "",
+    source: str = "",
+    min_score: int = 0,
+    q: str = "",
+    has_contact: str = "",
+    sort: str = "score",
+    hide_offers: int = 1,
+    limit: int = 100,
+):
     sql, a = "SELECT * FROM leads WHERE score>=?", [min_score]
+    if hide_offers:
+        sql += " AND LOWER(text) NOT LIKE '%[offer]%' AND LOWER(text) NOT LIKE '%[for hire]%' AND LOWER(text) NOT LIKE '%[for-hire]%'"
     if status:
         sql += " AND status=?"
         a.append(status)
@@ -211,7 +222,30 @@ async def leads(status: str = "", source: str = "", min_score: int = 0, q: str =
         sql += " AND (text LIKE ? OR translated_text LIKE ? OR service LIKE ? OR author LIKE ? OR contact_info LIKE ? OR draft LIKE ?)"
         pat = f"%{q}%"
         a.extend([pat, pat, pat, pat, pat, pat])
-    return [dict(r) for r in db.conn().execute(sql + " ORDER BY created_at DESC LIMIT ?", a + [limit])]
+    order = "score DESC, created_at DESC" if sort == "score" else "created_at DESC"
+    return [dict(r) for r in db.conn().execute(f"{sql} ORDER BY {order} LIMIT ?", a + [limit])]
+
+
+@app.post("/api/leads/{lid}/quick-reply")
+async def quick_reply(lid: int):
+    l = db.get_lead(lid)
+    if not l:
+        raise HTTPException(404, "Lead not found")
+    post_text = (l.get("translated_text") or l.get("text") or "")[:1200]
+    prompt = (
+        "Write a short, confident, human-sounding 2-3 sentence outreach message to this client post. "
+        "No fluff, no corporate cliches, no 'I hope this finds you well'. "
+        "Reference their exact task and end with a quick question to start a chat. "
+        "Write in the same language as the post.\n\n"
+        f"POST:\n{post_text}\n\n"
+        "Return ONLY the message text."
+    )
+    reply = await filters.llm(prompt, json_mode=False)
+    if not reply:
+        reply = l.get("draft") or "Hi! Saw your post — I can build this quickly and cleanly. Want to share the details here?"
+    reply = reply.strip().strip('"')
+    db.conn().execute("UPDATE leads SET draft=? WHERE id=?", (reply, lid))
+    return {"ok": True, "reply": reply}
 
 
 class Status(BaseModel):

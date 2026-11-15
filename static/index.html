@@ -359,15 +359,15 @@
     .drawer.is-open { display: flex; }
 
     .drawer__panel {
-      width: min(760px, 100%);
-      max-height: 82vh;
+      width: min(920px, 100%);
+      max-height: 86vh;
       background: var(--card);
       border: 1px solid rgba(0, 0, 0, 0.08);
       border-radius: 20px;
-      padding: 22px;
+      padding: 20px;
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 12px;
       box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.35);
     }
 
@@ -380,34 +380,125 @@
 
     .drawer__title { margin: 0; font-size: 18px; font-weight: 600; }
 
+    .drawer__controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+    }
+
+    .drawer__search {
+      flex: 1 1 180px;
+      height: 34px;
+      border-radius: 9px;
+      border: 1px solid rgba(0, 0, 0, 0.12);
+      background: #fff;
+      padding: 0 11px;
+      font-family: inherit;
+      font-size: 13px;
+      outline: none;
+    }
+
+    .filter-chip {
+      height: 32px;
+      padding: 0 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(0, 0, 0, 0.1);
+      background: #fff;
+      color: #222;
+      font-family: inherit;
+      font-size: 12.5px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .filter-chip.is-active {
+      background: #141414;
+      color: #fff;
+      border-color: #141414;
+    }
+
     .drawer__list {
       overflow-y: auto;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 8px;
       padding-right: 4px;
     }
 
     .lead-item {
       background: #fff;
       border: 1px solid rgba(0, 0, 0, 0.07);
-      border-radius: 14px;
-      padding: 14px 16px;
+      border-radius: 12px;
+      padding: 12px 14px;
       text-align: left;
     }
 
     .lead-item__top {
       display: flex;
       justify-content: space-between;
+      align-items: center;
       gap: 8px;
-      font-size: 12.5px;
+      font-size: 12px;
       color: var(--muted);
-      margin-bottom: 6px;
+      margin-bottom: 5px;
     }
 
-    .lead-item__text { font-size: 14px; line-height: 1.5; margin: 0 0 8px; color: var(--ink); }
-    .lead-item__meta { font-size: 12.5px; color: #333; display: flex; gap: 12px; flex-wrap: wrap; }
-    .lead-item__meta a { color: #111; font-weight: 500; }
+    .score-pill {
+      display: inline-block;
+      background: #141414;
+      color: #fff;
+      font-weight: 600;
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 6px;
+      margin-right: 6px;
+    }
+
+    .lead-item__text {
+      font-size: 13.5px;
+      line-height: 1.45;
+      margin: 0 0 8px;
+      color: var(--ink);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .lead-item__meta { font-size: 12.5px; color: #333; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .lead-item__meta a { color: #111; font-weight: 500; text-decoration: none; border-bottom: 1px solid rgba(0,0,0,0.25); }
+
+    .reply-btn {
+      margin-left: auto;
+      height: 28px;
+      padding: 0 11px;
+      border-radius: 8px;
+      border: 1px solid rgba(0,0,0,0.12);
+      background: #f5f5f3;
+      color: #111;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .reply-btn:hover { background: #141414; color: #fff; }
+
+    .reply-box {
+      margin-top: 8px;
+      padding: 9px 11px;
+      background: #f6f7f5;
+      border-radius: 8px;
+      font-size: 12.5px;
+      line-height: 1.45;
+      color: #111;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: flex-start;
+    }
 
     @keyframes rise {
       from { opacity: 0; transform: translate3d(0, 18px, 0); }
@@ -596,6 +687,15 @@
           <button class="chip-btn" id="drawer-close" type="button">✕</button>
         </div>
       </div>
+      <div class="drawer__controls">
+        <input class="drawer__search" id="drawer-q" type="text" placeholder="Filter by keyword...">
+        <button class="filter-chip is-active" data-src="" type="button">All</button>
+        <button class="filter-chip" data-src="reddit" type="button">Reddit</button>
+        <button class="filter-chip" data-src="freelancer" type="button">Freelancer</button>
+        <button class="filter-chip" data-src="lemmy" type="button">Lemmy</button>
+        <button class="filter-chip" data-src="telegram" type="button">Telegram</button>
+        <button class="filter-chip" id="sort-toggle" type="button">Score ↓</button>
+      </div>
       <div class="drawer__list" id="drawer-list">Loading...</div>
     </div>
   </div>
@@ -662,38 +762,93 @@
 
       var drawer = document.getElementById('leads-drawer');
       var listEl = document.getElementById('drawer-list');
+      var drawerQ = document.getElementById('drawer-q');
+      var sortToggle = document.getElementById('sort-toggle');
+      var activeSrc = '';
+      var activeSort = 'score';
 
       async function loadLeads(q) {
         drawer.classList.add('is-open');
+        if (typeof q === 'string') drawerQ.value = q;
+        var query = drawerQ.value.trim();
         listEl.textContent = lang === 'ru' ? 'Загрузка лидов...' : 'Loading leads...';
         try {
-          var url = '/api/leads?limit=25' + (q ? '&q=' + encodeURIComponent(q) : '');
+          var url = '/api/leads?limit=35&hide_offers=1&sort=' + activeSort +
+            (activeSrc ? '&source=' + encodeURIComponent(activeSrc) : '') +
+            (query ? '&q=' + encodeURIComponent(query) : '');
           var res = await fetch(url);
           var items = await res.json();
           if (!items.length) {
             listEl.innerHTML = '<div class="lead-item"><p class="lead-item__text">' +
-              (lang === 'ru' ? 'Пока пусто. Нажми «Сканировать», чтобы собрать свежие лиды.' : 'No leads yet. Click "Scan Now" to fetch fresh leads.') +
+              (lang === 'ru' ? 'Пока пусто по этому фильтру. Нажми «Сканировать».' : 'No leads for this filter. Click "Scan Now".') +
               '</p></div>';
             return;
           }
           listEl.innerHTML = items.map(function (it) {
-            var txt = (it.translated_text || it.text || '').slice(0, 260);
-            return '<div class="lead-item">' +
-              '<div class="lead-item__top"><span>' + (it.source || 'web') + ' • score ' + (it.score || 0) + '</span><span>' + (it.author || '') + '</span></div>' +
-              '<p class="lead-item__text">' + txt.replace(/</g, '&lt;') + '</p>' +
+            var raw = (it.translated_text || it.text || '').replace(/\s+/g, ' ').trim();
+            var shortTxt = raw.slice(0, 170) + (raw.length > 170 ? '...' : '');
+            var replyLabel = lang === 'ru' ? '⚡ Отклик' : '⚡ Reply';
+            return '<div class="lead-item" data-id="' + it.id + '">' +
+              '<div class="lead-item__top">' +
+                '<span><span class="score-pill">' + (it.score || 0) + '</span>' + (it.source || 'web') + '</span>' +
+                '<span>' + (it.author || '').replace(/^u\/\//, 'u/') + '</span>' +
+              '</div>' +
+              '<p class="lead-item__text">' + shortTxt.replace(/</g, '&lt;') + '</p>' +
               '<div class="lead-item__meta">' +
-              (it.email ? '<span>✉️ ' + it.email + '</span>' : '') +
-              (it.url ? '<a href="' + it.url + '" target="_blank" rel="noopener">Open</a>' : '') +
-              '</div></div>';
+                (it.email ? '<span>✉️ ' + it.email + '</span>' : '') +
+                (it.url ? '<a href="' + it.url + '" target="_blank" rel="noopener">' + (lang === 'ru' ? 'Открыть' : 'Open') + '</a>' : '') +
+                '<button class="reply-btn" type="button" onclick="window.__quickReply(' + it.id + ', this)">' + replyLabel + '</button>' +
+              '</div>' +
+              '<div class="reply-slot"></div>' +
+            '</div>';
           }).join('');
         } catch (err) {
           listEl.textContent = 'Error loading leads.';
         }
       }
 
+      window.__quickReply = async function (id, btn) {
+        btn.disabled = true;
+        btn.textContent = '...';
+        try {
+          var res = await fetch('/api/leads/' + id + '/quick-reply', { method: 'POST' });
+          var data = await res.json();
+          var slot = btn.closest('.lead-item').querySelector('.reply-slot');
+          var copyText = lang === 'ru' ? 'Копировать' : 'Copy';
+          slot.innerHTML = '<div class="reply-box"><span>' + (data.reply || '').replace(/</g, '&lt;') + '</span>' +
+            '<button class="filter-chip" type="button" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent);this.textContent=\'✓\'">' + copyText + '</button></div>';
+          btn.textContent = lang === 'ru' ? '⚡ Ещё раз' : '⚡ Redo';
+        } catch (e) {
+          btn.textContent = 'Error';
+        } finally {
+          btn.disabled = false;
+        }
+      };
+
+      document.querySelectorAll('.filter-chip[data-src]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          document.querySelectorAll('.filter-chip[data-src]').forEach(function (b) { b.classList.remove('is-active'); });
+          btn.classList.add('is-active');
+          activeSrc = btn.getAttribute('data-src') || '';
+          loadLeads();
+        });
+      });
+
+      sortToggle.addEventListener('click', function () {
+        activeSort = activeSort === 'score' ? 'newest' : 'score';
+        sortToggle.textContent = activeSort === 'score' ? 'Score ↓' : (lang === 'ru' ? 'Новые ↓' : 'Newest ↓');
+        loadLeads();
+      });
+
+      var qTimer;
+      drawerQ.addEventListener('input', function () {
+        clearTimeout(qTimer);
+        qTimer = setTimeout(function () { loadLeads(); }, 250);
+      });
+
       async function triggerScan() {
         await fetch('/api/scan', { method: 'POST' });
-        setTimeout(function () { loadLeads(document.getElementById('prompt-input').value.trim()); }, 1500);
+        setTimeout(function () { loadLeads(); }, 1500);
       }
 
       document.getElementById('search-form').addEventListener('submit', function () {
