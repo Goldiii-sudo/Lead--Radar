@@ -500,6 +500,42 @@
       align-items: flex-start;
     }
 
+    .settings-box {
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+      background: #fff;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: 14px;
+      padding: 14px;
+      text-align: left;
+    }
+
+    .settings-box.is-open { display: flex; }
+
+    .settings-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .settings-row label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted);
+    }
+
+    .settings-row input, .settings-row select {
+      height: 36px;
+      border-radius: 9px;
+      border: 1px solid rgba(0, 0, 0, 0.12);
+      padding: 0 10px;
+      font-family: inherit;
+      font-size: 13px;
+      outline: none;
+      background: #fafaf8;
+    }
+
     @keyframes rise {
       from { opacity: 0; transform: translate3d(0, 18px, 0); }
       to { opacity: 1; transform: translate3d(0, 0, 0); }
@@ -683,8 +719,37 @@
       <div class="drawer__head">
         <h2 class="drawer__title" id="drawer-title">Live Leads</h2>
         <div style="display:flex;gap:8px;">
+          <button class="chip-btn" id="drawer-settings-btn" type="button" data-i18n="btnSettings">⚙️ Settings</button>
           <button class="chip-btn" id="drawer-scan" type="button" data-i18n="btnScan">Scan Now</button>
           <button class="chip-btn" id="drawer-close" type="button">✕</button>
+        </div>
+      </div>
+      <div class="settings-box" id="settings-box">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="filter-chip" type="button" onclick="window.__setPreset('python, fastapi, telegram bot, scraper, automation')">Python &amp; Bots</button>
+          <button class="filter-chip" type="button" onclick="window.__setPreset('react, nextjs, landing page, figma, ui/ux, frontend')">Web &amp; Design</button>
+          <button class="filter-chip" type="button" onclick="window.__setPreset('ai, llm, openai, rag, chatbot, n8n')">AI &amp; Agents</button>
+        </div>
+        <div class="settings-row">
+          <label for="set-kws" data-i18n="lblKws">What to parse (keywords, comma-separated)</label>
+          <input id="set-kws" type="text" placeholder="python, fastapi, telegram bot, react">
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <div class="settings-row" style="flex:1 1 220px;">
+            <label for="set-negs" data-i18n="lblNegs">Exclude words</label>
+            <input id="set-negs" type="text" placeholder="unpaid, intern, [offer]">
+          </div>
+          <div class="settings-row" style="width:130px;">
+            <label for="set-score" data-i18n="lblScore">Min Score</label>
+            <select id="set-score">
+              <option value="35">35+</option>
+              <option value="50">50+</option>
+              <option value="70" selected>70+ (Hot)</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;">
+          <button class="btn-dark" id="btn-save-settings" type="button" style="padding:9px 16px;font-size:13px;" data-i18n="btnSaveScan">Save &amp; Scan</button>
         </div>
       </div>
       <div class="drawer__controls">
@@ -727,7 +792,8 @@
           headline: 'The lead engine<br class="brk" /> shaped for what counts.',
           subcopy: 'LeadRadar is an AI system that filters out spam and bots before you see the feed.<br class="brk" /> Plug into Telegram, Reddit, X, or 2GIS, and ship outreach you can really rely on.',
           placeholder: 'Search live leads: Python, FastAPI, Telegram bot, scraping...',
-          btnLeads: 'Live Leads', btnScan: 'Scan Now', nextLang: 'RU'
+          btnLeads: 'Live Leads', btnScan: 'Scan Now', btnSettings: '⚙️ Settings',
+          lblKws: 'What to parse (keywords, comma-separated)', lblNegs: 'Exclude words', lblScore: 'Min Score', btnSaveScan: 'Save & Scan', nextLang: 'RU'
         },
         ru: {
           navLeads: 'Лиды', navApi: 'API', navBot: 'ТГ-бот', navRepo: 'GitHub', cta: 'Открыть бота',
@@ -735,7 +801,8 @@
           headline: 'Поиск лидов<br class="brk" /> без спама и мусора.',
           subcopy: 'LeadRadar — ИИ-система, которая вырезает ботов и рекламу до попадания в ленту.<br class="brk" /> Подключай Telegram, Reddit, X или 2ГИС и пиши первым реальным клиентам.',
           placeholder: 'Поиск живых лидов: Python, FastAPI, ТГ-бот, парсер...',
-          btnLeads: 'Живые лиды', btnScan: 'Сканировать', nextLang: 'EN'
+          btnLeads: 'Живые лиды', btnScan: 'Сканировать', btnSettings: '⚙️ Настройки',
+          lblKws: 'Что парсить (ключевые слова через запятую)', lblNegs: 'Стоп-слова (исключить)', lblScore: 'Мин. балл', btnSaveScan: 'Сохранить и парсить', nextLang: 'EN'
         }
       };
 
@@ -883,6 +950,44 @@
         await fetch('/api/scan', { method: 'POST' });
         setTimeout(function () { loadLeads(); }, 1500);
       }
+
+      var settingsBox = document.getElementById('settings-box');
+      window.__setPreset = function (val) {
+        document.getElementById('set-kws').value = val;
+      };
+
+      document.getElementById('drawer-settings-btn').addEventListener('click', async function () {
+        var opening = !settingsBox.classList.contains('is-open');
+        settingsBox.classList.toggle('is-open', opening);
+        if (opening) {
+          try {
+            var r = await fetch('/api/settings');
+            var s = await r.json();
+            document.getElementById('set-kws').value = (s.keywords || []).join(', ');
+            document.getElementById('set-negs').value = (s.negatives || []).join(', ');
+            document.getElementById('set-score').value = String(s.alert_score || 70);
+          } catch (e) {}
+        }
+      });
+
+      document.getElementById('btn-save-settings').addEventListener('click', async function () {
+        var btn = this;
+        btn.disabled = true;
+        var kws = document.getElementById('set-kws').value.split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+        var negs = document.getElementById('set-negs').value.split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+        var score = parseInt(document.getElementById('set-score').value, 10) || 70;
+        try {
+          await fetch('/api/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ keywords: kws, negatives: negs, alert_score: score })
+          });
+          settingsBox.classList.remove('is-open');
+          await triggerScan();
+        } finally {
+          btn.disabled = false;
+        }
+      });
 
       document.getElementById('search-form').addEventListener('submit', function () {
         loadLeads(document.getElementById('prompt-input').value.trim());
