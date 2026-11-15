@@ -248,6 +248,44 @@ async def quick_reply(lid: int):
     return {"ok": True, "reply": reply}
 
 
+@app.post("/api/leads/{lid}/summary")
+async def lead_summary(lid: int, lang: str = "ru"):
+    l = db.get_lead(lid)
+    if not l:
+        raise HTTPException(404, "Lead not found")
+    post_text = (l.get("translated_text") or l.get("text") or "")[:1400]
+    target = "Russian" if lang == "ru" else "English"
+    prompt = (
+        f"Analyze this client request and return a JSON object with 4 short fields in {target} "
+        "(except 'pitch', which should be in the post's original language so we can send it to the client):\n"
+        '{"title": "5-7 word task title", "pain": "1 short sentence on client pain/need", '
+        '"solution": "1 short sentence on what to build/offer", '
+        '"pitch": "2-3 sentence human outreach message ending with a question"}\n\n'
+        f"POST:\n{post_text}"
+    )
+    raw = await filters.llm(prompt, json_mode=True)
+    if raw:
+        try:
+            import json
+            data = json.loads(raw)
+            return {
+                "ok": True,
+                "title": str(data.get("title", ""))[:120],
+                "pain": str(data.get("pain", ""))[:300],
+                "solution": str(data.get("solution", ""))[:300],
+                "pitch": str(data.get("pitch", ""))[:500],
+            }
+        except Exception:
+            pass
+    return {
+        "ok": True,
+        "title": l.get("service") or "Project Request",
+        "pain": post_text[:160],
+        "solution": "Custom implementation tailored to the client's brief.",
+        "pitch": l.get("draft") or "Hi! Saw your post — I can help build this cleanly. Want to share details here?",
+    }
+
+
 class Status(BaseModel):
     status: str
 
